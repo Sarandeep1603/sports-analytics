@@ -1,0 +1,172 @@
+name: Sports Analytics Pipeline — CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  PYTHON_VERSION: "3.9"
+  DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+  DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+
+jobs:
+
+  # ── Job 1: Code Quality & Linting ──────────────────────────────────────────
+  lint-and-test:
+    name: Lint & Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pytest pyspark==3.5.0 delta-spark great_expectations
+
+      - name: Lint with flake8
+        run: |
+          # Stop build on syntax errors or undefined names
+          flake8 databricks/ airflow/ --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Warn on style issues but don't fail
+          flake8 databricks/ airflow/ --count --exit-zero --max-complexity=10 --max-line-length=120 --statistics
+
+      - name: Run unit tests
+        run: |
+          pytest tests/ -v --tb=short
+        continue-on-error: false
+
+      - name: Validate Great Expectations suites
+        run: |
+          python -c "
+          import json
+          with open('great_expectations/suites/silver_layer_suite.json') as f:
+              suite = json.load(f)
+          assert 'expectation_suite_name' in suite
+          assert len(suite['expectations']) > 0
+          print(f'GE suite valid: {len(suite[\"expectations\"])} expectations loaded')
+          "
+
+      - name: Validate Airflow DAG syntax
+        run: |
+          python -c "
+          import ast, sys
+          with open('airflow/dags/sports_pipeline_dag.py') as f:
+              source = f.read()
+          ast.parse(source)
+          print('Airflow DAG syntax: OK')
+          "
+
+  # ── Job 2: Validate ADF Pipeline JSONs ────────────────────────────────────
+  validate-adf:
+    name: Validate ADF Pipeline Definitions
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Validate ADF JSON files
+        run: |
+          for file in adf/pipelines/*.json; do
+            python -c "
+          import json, sys
+          with open('$file') as f:
+              data = json.load(f)
+          assert 'name' in data, 'Pipeline name missing'
+          assert 'properties' in data, 'Properties missing'
+          print(f'ADF pipeline valid: {data[\"name\"]}')
+            "
+          done
+
+  # ── Job 3: Deploy to Databricks (on main branch only) ─────────────────────
+  deploy-databricks:
+    name: Deploy Notebooks to Databricks
+    runs-on: ubuntu-latest
+    needs: [lint-and-test, validate-adf]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Databricks CLI
+        run: |
+          pip install databricks-cli
+
+      - name: Configure Databricks CLI
+        run: |
+          databricks configure --token <<EOF
+          ${{ secrets.DATABRICKS_HOST }}
+          ${{ secrets.DATABRICKS_TOKEN }}
+          EOF
+
+      - name: Deploy Bronze Notebook
+        run: |
+          databricks workspace import \
+            databricks/notebooks/bronze/ingest_raw_api_data.py \
+            /Repos/sports-analytics/databricks/notebooks/bronze/ingest_raw_api_data \
+            --language PYTHON \
+            --overwrite
+
+      - name: Deploy Silver Notebook
+        run: |
+          databricks workspace import \
+            databricks/notebooks/silver/transform_silver.py \
+            /Repos/sports-analytics/databricks/notebooks/silver/transform_silver \
+            --language PYTHON \
+            --overwrite
+
+      - name: Deploy Gold Notebook
+        run: |
+          databricks workspace import \
+            databricks/notebooks/gold/build_gold_star_schema.py \
+            /Repos/sports-analytics/databricks/notebooks/gold/build_gold_star_schema \
+            --language PYTHON \
+            --overwrite
+
+      - name: Deploy Utility Scripts
+        run: |
+          databricks workspace import \
+            databricks/scripts/utils.py \
+            /Repos/sports-analytics/databricks/scripts/utils \
+            --language PYTHON \
+            --overwrite
+
+      - name: Notify Deployment Success
+        run: |
+          echo "✅ All notebooks deployed to Databricks workspace successfully"
+          echo "Deployed at: $(date -u)"
+
+  # ── Job 4: Pipeline Health Check (Post Deploy) ─────────────────────────────
+  health-check:
+    name: Post-Deploy Health Check
+    runs-on: ubuntu-latest
+    needs: deploy-databricks
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Verify Databricks workspace notebooks exist
+        run: |
+          pip install databricks-cli
+          databricks configure --token <<EOF
+          ${{ secrets.DATABRICKS_HOST }}
+          ${{ secrets.DATABRICKS_TOKEN }}
+          EOF
+          databricks workspace ls /Repos/sports-analytics/databricks/notebooks/
+          echo "✅ Health check passed"
+          
