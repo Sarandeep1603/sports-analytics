@@ -1,0 +1,29 @@
+# Sports Analytics Pipeline — Python Dependencies
+
+# Core
+pyspark==3.5.0
+delta-spark==3.1.0
+
+# Orchestration
+apache-airflow==2.8.0
+apache-airflow-providers-databricks==6.0.0
+
+# Data Quality
+great-expectations==0.18.12
+
+# Azure SDKs
+azure-mgmt-datafactory==4.0.0
+azure-identity==1.15.0
+azure-storage-file-datalake==12.14.0
+azure-keyvault-secrets==4.7.0
+
+# HTTP
+requests==2.31.0
+
+# Utilities
+python-dotenv==1.0.0
+
+# Dev / Testing
+pytest==7.4.0
+pytest-mock==3.12.0
+flake8==6.1.0
