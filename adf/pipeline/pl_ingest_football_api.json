@@ -1,0 +1,141 @@
+{
+    "name": "pl_ingest_football_api",
+    "properties": {
+        "description": "Ingests live football match data from API-Football REST API and lands raw JSON to ADLS Gen2 Bronze layer. Parameterized for league IDs and season.",
+        "activities": [
+            {
+                "name": "Get Football Fixtures",
+                "description": "HTTP GET to API-Football /fixtures endpoint for specified leagues and date",
+                "type": "Copy",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": "0.01:00:00",
+                    "retry": 3,
+                    "retryIntervalInSeconds": 30
+                },
+                "typeProperties": {
+                    "source": {
+                        "type": "RestSource",
+                        "httpRequestTimeout": "00:05:00",
+                        "requestInterval": "00.00:00:00.010",
+                        "requestMethod": "GET",
+                        "additionalHeaders": {
+                            "x-apisports-key": {
+                                "value": "@{linkedService().ApiFootballKey}",
+                                "type": "Expression"
+                            }
+                        }
+                    },
+                    "sink": {
+                        "type": "JsonSink",
+                        "storeSettings": {
+                            "type": "AzureBlobFSWriteSettings"
+                        },
+                        "formatSettings": {
+                            "type": "JsonWriteSettings",
+                            "filePattern": "setOfObjects"
+                        }
+                    },
+                    "enableStaging": false
+                },
+                "inputs": [
+                    {
+                        "referenceName": "ds_api_football_fixtures",
+                        "type": "DatasetReference",
+                        "parameters": {
+                            "league_id": {
+                                "value": "@pipeline().parameters.league_id",
+                                "type": "Expression"
+                            },
+                            "season": {
+                                "value": "@pipeline().parameters.season",
+                                "type": "Expression"
+                            },
+                            "date": {
+                                "value": "@pipeline().parameters.ingest_date",
+                                "type": "Expression"
+                            }
+                        }
+                    }
+                ],
+                "outputs": [
+                    {
+                        "referenceName": "ds_adls_bronze_json",
+                        "type": "DatasetReference",
+                        "parameters": {
+                            "folder_path": {
+                                "value": "@concat('football/raw/', pipeline().parameters.ingest_date, '/league_', pipeline().parameters.league_id)",
+                                "type": "Expression"
+                            },
+                            "file_name": {
+                                "value": "@concat('fixtures_', pipeline().parameters.league_id, '_', pipeline().parameters.ingest_date, '.json')",
+                                "type": "Expression"
+                            }
+                        }
+                    }
+                ]
+            },
+            {
+                "name": "Log Ingestion Metadata",
+                "description": "Writes pipeline run metadata to audit log table in SQL Server",
+                "type": "SqlServerStoredProcedure",
+                "dependsOn": [
+                    {
+                        "activity": "Get Football Fixtures",
+                        "dependencyConditions": ["Succeeded"]
+                    }
+                ],
+                "typeProperties": {
+                    "storedProcedureName": "usp_log_pipeline_run",
+                    "storedProcedureParameters": {
+                        "pipeline_name": {
+                            "value": "pl_ingest_football_api",
+                            "type": "String"
+                        },
+                        "run_id": {
+                            "value": "@pipeline().RunId",
+                            "type": "String"
+                        },
+                        "execution_date": {
+                            "value": "@pipeline().parameters.ingest_date",
+                            "type": "String"
+                        },
+                        "status": {
+                            "value": "SUCCESS",
+                            "type": "String"
+                        }
+                    }
+                },
+                "linkedServiceName": {
+                    "referenceName": "ls_sql_server_audit",
+                    "type": "LinkedServiceReference"
+                }
+            }
+        ],
+        "parameters": {
+            "ingest_date": {
+                "type": "string",
+                "defaultValue": "@formatDateTime(utcnow(), 'yyyy-MM-dd')"
+            },
+            "league_id": {
+                "type": "string",
+                "defaultValue": "39"
+            },
+            "season": {
+                "type": "string",
+                "defaultValue": "2024"
+            },
+            "league_ids": {
+                "type": "string",
+                "defaultValue": "39,140,135,78,61"
+            }
+        },
+        "annotations": [
+            "sports-analytics",
+            "bronze-ingestion",
+            "api-football"
+        ],
+        "concurrency": 1,
+        "lastPublishTime": "2024-11-01T00:00:00Z"
+    }
+}
