@@ -1,0 +1,114 @@
+{
+  "expectation_suite_name": "silver_football_matches_suite",
+  "meta": {
+    "great_expectations_version": "0.18.x",
+    "description": "Validation suite for Silver layer football_matches Delta table. Runs after PySpark MERGE, before Gold build. Fails pipeline if critical expectations are not met.",
+    "owner": "sarandeep.dang",
+    "created_date": "2024-11-01"
+  },
+  "expectations": [
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": { "column": "match_id" },
+      "meta": { "severity": "CRITICAL", "description": "match_id must always be present" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": { "column": "match_id", "mostly": 1.0 },
+      "meta": { "severity": "CRITICAL", "description": "match_id cannot be null — primary key" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_unique",
+      "kwargs": { "column": "match_id" },
+      "meta": { "severity": "CRITICAL", "description": "match_id must be unique — deduplication check" }
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": { "column": "match_date" },
+      "meta": { "severity": "CRITICAL" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": { "column": "match_date", "mostly": 1.0 },
+      "meta": { "severity": "CRITICAL", "description": "match_date required for date dimension join" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "home_goals",
+        "min_value": 0,
+        "max_value": 20,
+        "mostly": 0.999
+      },
+      "meta": { "severity": "WARNING", "description": "Goals should be 0-20 range" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "away_goals",
+        "min_value": 0,
+        "max_value": 20,
+        "mostly": 0.999
+      },
+      "meta": { "severity": "WARNING" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": { "column": "home_team_id", "mostly": 1.0 },
+      "meta": { "severity": "CRITICAL", "description": "home_team_id required for dim_team join" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": { "column": "away_team_id", "mostly": 1.0 },
+      "meta": { "severity": "CRITICAL" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": {
+        "column": "match_result",
+        "value_set": ["HOME_WIN", "AWAY_WIN", "DRAW", "UNKNOWN"]
+      },
+      "meta": { "severity": "CRITICAL", "description": "match_result must be one of allowed values" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": {
+        "column": "match_status",
+        "value_set": ["FINISHED", "NOT_STARTED", "LIVE", "POSTPONED", "CANCELLED"]
+      },
+      "meta": { "severity": "WARNING" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": { "column": "league_id", "mostly": 1.0 },
+      "meta": { "severity": "CRITICAL", "description": "league_id required for partitioning" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_between",
+      "kwargs": {
+        "column": "season",
+        "min_value": 2020,
+        "max_value": 2030
+      },
+      "meta": { "severity": "WARNING", "description": "Season year sanity check" }
+    },
+    {
+      "expectation_type": "expect_table_row_count_to_be_between",
+      "kwargs": {
+        "min_value": 1,
+        "max_value": 100000
+      },
+      "meta": { "severity": "WARNING", "description": "Table should never be empty or suspiciously large" }
+    },
+    {
+      "expectation_type": "expect_column_values_to_match_regex",
+      "kwargs": {
+        "column": "match_date",
+        "regex": "^\\d{4}-\\d{2}-\\d{2}$",
+        "mostly": 1.0
+      },
+      "meta": { "severity": "CRITICAL", "description": "match_date must be YYYY-MM-DD format" }
+    }
+  ]
+}
+
